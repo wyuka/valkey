@@ -285,6 +285,13 @@ void psetexCommand(client *c) {
     setGenericCommand(c, ARGS_PX | ARGS_ARGV3, c->argv[1], c->argv[3], c->argv[2], UNIT_MILLISECONDS, NULL, NULL, NULL);
 }
 
+void getsetCommand(client *c) {
+    if (!c->flag.argv_borrowed) {
+        c->argv[2] = tryObjectEncoding(c->argv[2]);
+    }
+    setGenericCommand(c, ARGS_SET_GET, c->argv[1], c->argv[2], NULL, UNIT_SECONDS, NULL, NULL, NULL);
+}
+
 /* DELIFEQ key value */
 void delifeqCommand(client *c) {
     robj *o;
@@ -409,11 +416,6 @@ void getdelCommand(client *c) {
         server.dirty++;
     }
     commitDeferredReplyBuffer(c, 1);
-}
-
-void getsetCommand(client *c) {
-    if (!c->flag.argv_borrowed) c->argv[2] = tryObjectEncoding(c->argv[2]);
-    setGenericCommand(c, ARGS_SET_GET, c->argv[1], c->argv[2], NULL, UNIT_SECONDS, NULL, NULL, NULL);
 }
 
 void setrangeCommand(client *c) {
