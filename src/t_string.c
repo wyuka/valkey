@@ -187,19 +187,25 @@ void setGenericCommand(client *c,
     /* Propagate without the GET argument (Isn't needed if we had expire since in that case we completely re-written the
      * command argv) */
     if ((flags & ARGS_SET_GET) && !expire) {
-        int argc = 0;
-        int j;
-        robj **argv = zmalloc((c->argc - 1) * sizeof(robj *));
-        for (j = 0; j < c->argc; j++) {
-            char *a = objectGetVal(c->argv[j]);
-            /* Skip GET which may be repeated multiple times. */
-            if (j >= 3 && (a[0] == 'g' || a[0] == 'G') && (a[1] == 'e' || a[1] == 'E') &&
-                (a[2] == 't' || a[2] == 'T') && a[3] == '\0')
-                continue;
-            argv[argc++] = c->argv[j];
-            incrRefCount(c->argv[j]);
+        if (c->cmd->proc == getsetCommand) {
+            /* If coming from the GETSET command, just propagate SET <key> <val> by replacing GETSET with SET */
+            rewriteClientCommandArgument(c, 0, shared.set);
+        } else {
+            /* Else, remove any mentions of the GET keyword in the command args */
+            int argc = 0;
+            int j;
+            robj **argv = zmalloc((c->argc - 1) * sizeof(robj *));
+            for (j = 0; j < c->argc; j++) {
+                char *a = objectGetVal(c->argv[j]);
+                /* Skip GET which may be repeated multiple times. */
+                if (j >= 3 && (a[0] == 'g' || a[0] == 'G') && (a[1] == 'e' || a[1] == 'E') &&
+                    (a[2] == 't' || a[2] == 'T') && a[3] == '\0')
+                    continue;
+                argv[argc++] = c->argv[j];
+                incrRefCount(c->argv[j]);
+            }
+            replaceClientCommandVector(c, argc, argv);
         }
-        replaceClientCommandVector(c, argc, argv);
     }
 
 cleanup:
@@ -406,27 +412,8 @@ void getdelCommand(client *c) {
 }
 
 void getsetCommand(client *c) {
-    initDeferredReplyBuffer(c);
-    if (getGenericCommand(c) == C_ERR) return;
-    robj *val = c->argv[2];
-    if (c->flag.argv_borrowed) {
-        /* If the client does not own the argv, we need to ensure that the value
-         * object is not released when adding it to the database. */
-        incrRefCount(val);
-        setKey(c, c->db, c->argv[1], &val, 0);
-        rewriteClientCommandArgument(c, 2, val);
-    } else {
-        val = tryObjectEncoding(val);
-        setKey(c, c->db, c->argv[1], &val, 0);
-        incrRefCount(val);
-        c->argv[2] = val;
-    }
-    notifyKeyspaceEvent(NOTIFY_STRING, "set", c->argv[1], c->db->id);
-    server.dirty++;
-
-    commitDeferredReplyBuffer(c, 1);
-    /* Propagate as SET command */
-    rewriteClientCommandArgument(c, 0, shared.set);
+    if (!c->flag.argv_borrowed) c->argv[2] = tryObjectEncoding(c->argv[2]);
+    setGenericCommand(c, ARGS_SET_GET, c->argv[1], c->argv[2], NULL, UNIT_SECONDS, NULL, NULL, NULL);
 }
 
 void setrangeCommand(client *c) {
