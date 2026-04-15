@@ -249,6 +249,27 @@ start_server {tags {"string"}} {
         list [r getset foo xyz] [r get foo]
     } {bar xyz}
 
+    test {GETSET against wrong type} {
+        r del foo
+        r lpush foo a b c
+        assert_error "WRONGTYPE*" {r getset foo xyz}
+    }
+
+    test {GETSET with TTL removes TTL} {
+        r set foo bar EX 100
+        assert_range [r ttl foo] 50 100
+        assert_equal bar [r getset foo baz]
+        assert_equal baz [r get foo]
+        assert_equal -1 [r ttl foo]
+    }
+
+    test {GETSET with integer value} {
+        r set foo 12345
+        assert_equal 12345 [r getset foo 67890]
+        assert_equal 67890 [r get foo]
+        assert_encoding int foo
+    }
+
     test {MSET base case} {
         r mset x{t} 10 y{t} "foo bar" z{t} "x x x x x x x\n\n\r\n"
         r mget x{t} y{t} z{t}
